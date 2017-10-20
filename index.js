@@ -31,11 +31,7 @@ export const initialize = options => {
 };
 
 const defaultMergeProps = (stateProps, firebaseProps, ownProps) => {
-  return {
-    ...stateProps,
-    ...firebaseProps,
-    ...ownProps
-  };
+  return Object.assign({}, stateProps, firebaseProps, ownProps);
 };
 
 export const connectFirebase = ({getInitialData, registerListeners, stateToProps, firebaseToProps, mergeProps, options}) => {
@@ -109,9 +105,7 @@ export class Provider extends React.PureComponent {
   };
 
   getChildContext() {
-    return {
-      ...this.state
-    };
+    return Object.assign({}, this.state);
   }
 
   componentDidMount = () => {
