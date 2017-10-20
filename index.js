@@ -1,3 +1,5 @@
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
 import React from 'react';
 import PropTypes from 'prop-types';
 
@@ -31,124 +33,113 @@ export const initialize = options => {
 };
 
 const defaultMergeProps = (stateProps, firebaseProps, ownProps) => {
-  return Object.assign({}, stateProps, firebaseProps, ownProps);
+  return _extends({}, stateProps, firebaseProps, ownProps);
 };
 
-export const connectFirebase = ({getInitialData, registerListeners, stateToProps, firebaseToProps, mergeProps, options}) => {
+export const connectFirebase = ({ getInitialData, registerListeners, stateToProps, firebaseToProps, mergeProps, options }) => {
   if (typeof registerListeners === 'function') registerListeners = [registerListeners];
   stateToProps = stateToProps || (() => ({}));
   firebaseToProps = firebaseToProps || (() => ({}));
   mergeProps = mergeProps || defaultMergeProps;
 
+  return Comp => {
+    var _class, _temp;
 
-  return Comp => class extends React.PureComponent {
-    static contextTypes = {
+    return _temp = _class = class extends React.PureComponent {
+
+      constructor(props) {
+        super(props);
+
+        this.componentDidMount = () => {
+          getInitialData && getInitialData(firebase, localsRef, this.props);
+
+          this.unsubscribes = (registerListeners || []).map(f => f(firebase, localsRef));
+
+          this.unsubscribe = firebase.firestore().collection("locals").doc(this.context.user.id).onSnapshot(doc => {
+            const source = doc.metadata.hasPendingWrites ? "Local" : "Server";
+
+            this.setState(mergeProps(stateToProps(currentState, this.props), firebaseToProps(firebase, this.props), this.props));
+          });
+        };
+
+        this.componentWillUnmount = () => {
+          this.unsubscribe();
+          this.unsubscribes.forEach(f => f());
+        };
+
+        this.componentWillReceiveProps = nextProps => {
+          this.setState(mergeProps(stateToProps(currentState, nextProps), firebaseToProps(firebase, nextProps), nextProps));
+        };
+
+        this.state = mergeProps(stateToProps(currentState, props), firebaseToProps(firebase, props), props);
+      }
+
+      render() {
+        return React.createElement(Comp, this.state);
+      }
+    }, _class.contextTypes = {
       initialized: PropTypes.bool,
       user: PropTypes.object
-    };
-
-    constructor(props) {
-      super(props);
-
-      this.state = mergeProps(
-        stateToProps(currentState, props),
-        firebaseToProps(firebase, props),
-        props
-      );
-    }
-
-    componentDidMount = () => {
-      getInitialData && getInitialData(firebase, localsRef, this.props);
-
-      this.unsubscribes = (registerListeners || []).map(f => f(firebase, localsRef));
-
-      this.unsubscribe = firebase.firestore().collection("locals").doc(this.context.user.id)
-        .onSnapshot(doc => {
-          const source = doc.metadata.hasPendingWrites ? "Local" : "Server";
-
-          this.setState(mergeProps(
-            stateToProps(currentState, this.props),
-            firebaseToProps(firebase, this.props),
-            this.props
-          ));
-        });
-    };
-
-    componentWillUnmount = () => {
-      this.unsubscribe();
-      this.unsubscribes.forEach(f => f());
-    };
-
-    componentWillReceiveProps = nextProps => {
-      this.setState(mergeProps(
-        stateToProps(currentState, nextProps),
-        firebaseToProps(firebase, nextProps),
-        nextProps
-      ));
-    };
-
-    render() {
-      return <Comp {...this.state}/>;
-    }
+    }, _temp;
   };
 };
 
 export class Provider extends React.PureComponent {
-  state = {
-    initialized: false,
-    user: null
-  };
+  constructor(...args) {
+    var _temp2;
 
-  static childContextTypes = {
-    initialized: PropTypes.bool,
-    user: PropTypes.object
-  };
+    return _temp2 = super(...args), this.state = {
+      initialized: false,
+      user: null
+    }, this.componentDidMount = () => {
+      this.unsubscribe = firebase.auth().onAuthStateChanged(user => {
+        if (user) {
+          const localUser = {
+            id: user.uid,
+            email: user.email,
+            isAnonymous: user.isAnonymous
+          };
+
+          this.setState({
+            initialized: true,
+            user: localUser
+          });
+
+          const updateData = {
+            user: localUser
+          };
+          const docRef = firebase.firestore().collection('locals').doc(user.uid);
+          docRef.update(updateData).catch(err => {
+            if (err.code === 'not-found') {
+              docRef.set(updateData);
+            }
+          });
+        } else {
+          // 익명으로 로그인. 로컬 저장소 대신 모두 파이어베이스 사용하기 위해서 필요함
+          firebase.auth().signInAnonymously();
+        }
+      });
+    }, this.componentWillUnmount = () => {
+      this.unsubscribe();
+    }, _temp2;
+  }
 
   getChildContext() {
-    return Object.assign({}, this.state);
+    return _extends({}, this.state);
   }
-
-  componentDidMount = () => {
-    this.unsubscribe = firebase.auth().onAuthStateChanged(user => {
-      if (user) {
-        const localUser = {
-          id: user.uid,
-          email: user.email,
-          isAnonymous: user.isAnonymous
-        };
-
-        this.setState({
-          initialized: true,
-          user: localUser
-        });
-
-        const updateData = {
-          user: localUser
-        };
-        const docRef = firebase.firestore().collection('locals').doc(user.uid);
-        docRef.update(updateData).catch(err => {
-          if (err.code === 'not-found') {
-            docRef.set(updateData);
-          }
-        });
-      } else {
-        // 익명으로 로그인. 로컬 저장소 대신 모두 파이어베이스 사용하기 위해서 필요함
-        firebase.auth().signInAnonymously();
-      }
-    });
-
-  };
-
-  componentWillUnmount = () => {
-    this.unsubscribe();
-  };
-
 
   render() {
-    const {initialized} = this.state;
+    const { initialized } = this.state;
 
-    return <div>
-      {initialized && this.props.children}
-    </div>;
+    return React.createElement(
+      'div',
+      null,
+      initialized && this.props.children
+    );
   }
 }
+Provider.childContextTypes = {
+  initialized: PropTypes.bool,
+  user: PropTypes.object
+};
+
